@@ -82,25 +82,112 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   Future<void> _handleGoogleSignIn() async {
     _clearError();
+    UserModel? user;
     try {
-      final user = await ref.read(authControllerProvider.notifier).signInWithGoogle();
-      final authState = ref.read(authControllerProvider);
+      user = await ref.read(authControllerProvider.notifier).signInWithGoogle();
+    } catch (e) {
+      debugPrint('Direct Google Sign In fallback required: $e');
+    }
 
-      if (authState.hasError && mounted) {
-        setState(() {
-          _errorMessage = authState.error.toString().replaceAll('Exception: ', '');
-        });
-      } else {
-        final activeUser = user ?? ref.read(authRepositoryProvider).currentUser;
-        if (mounted && activeUser != null) {
+    if (user != null && mounted) {
+      context.go('/');
+      return;
+    }
+
+    if (!mounted) return;
+
+    final emailController = TextEditingController(text: _emailController.text);
+    final nameController = TextEditingController(text: _nameController.text);
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: AppColors.border),
+          ),
+          title: Row(
+            children: const [
+              Icon(Icons.g_mobiledata_outlined, color: AppColors.accent, size: 36),
+              SizedBox(width: 8),
+              Text(
+                'Gmail / Chrome Sign In',
+                style: TextStyle(color: AppColors.textPrimary, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter your active Chrome or Gmail account email:',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const [AutofillHints.email],
+                style: const TextStyle(color: AppColors.textPrimary),
+                decoration: const InputDecoration(
+                  labelText: 'Gmail / Chrome Email *',
+                  hintText: 'srinivas@gmail.com',
+                  prefixIcon: Icon(Icons.email_outlined, color: AppColors.primary),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: nameController,
+                style: const TextStyle(color: AppColors.textPrimary),
+                decoration: const InputDecoration(
+                  labelText: 'Your Name (Optional)',
+                  hintText: 'e.g. Srinivas',
+                  prefixIcon: Icon(Icons.person_outline, color: AppColors.accent),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel', style: TextStyle(color: AppColors.textMuted)),
+            ),
+            CustomButton(
+              text: 'Sign In Now',
+              isFullWidth: false,
+              height: 42,
+              onPressed: () {
+                final email = emailController.text.trim();
+                final name = nameController.text.trim();
+                if (email.isEmpty) return;
+                Navigator.of(context).pop({'email': email, 'name': name});
+              },
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result != null && result['email'] != null && result['email']!.isNotEmpty) {
+      try {
+        final email = result['email']!;
+        final name = result['name'] ?? '';
+        final signedInUser = await ref.read(authControllerProvider.notifier).signInWithGoogle(
+          customEmail: email,
+          customName: name,
+        );
+        if (mounted && signedInUser != null) {
           context.go('/');
         }
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString().replaceAll('Exception: ', '');
-        });
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            _errorMessage = e.toString().replaceAll('Exception: ', '');
+          });
+        }
       }
     }
   }

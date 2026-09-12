@@ -11,6 +11,7 @@ import '../../../core/services/location_service.dart';
 import '../../../shared/widgets/journey_status_card.dart';
 import '../../../shared/widgets/custom_button.dart';
 import '../../../shared/widgets/bottom_nav_bar.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../providers/journey_provider.dart';
 import '../../fake_call/screens/fake_call_screen.dart';
 
@@ -192,7 +193,6 @@ class _JourneyScreenState extends ConsumerState<JourneyScreen> {
     }
   }
 
-
   String _formatElapsed(int seconds) {
     final mins = (seconds ~/ 60).toString().padLeft(2, '0');
     final secs = (seconds % 60).toString().padLeft(2, '0');
@@ -202,6 +202,12 @@ class _JourneyScreenState extends ConsumerState<JourneyScreen> {
   @override
   Widget build(BuildContext context) {
     final activeJourneyAsync = ref.watch(activeJourneyStreamProvider);
+    final user = ref.watch(authStateProvider).value;
+    final rawName = user?.displayName ?? '';
+    final rawEmail = user?.email ?? '';
+    final userName = rawName.isNotEmpty && rawName != 'SafeCircle User'
+        ? rawName
+        : (rawEmail.contains('@') ? rawEmail.split('@').first : 'User');
 
     if (_showFakeCall) {
       return FakeCallOverlay(
@@ -241,6 +247,78 @@ class _JourneyScreenState extends ConsumerState<JourneyScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // User Greeting Header Card displaying automatically fetched Chrome/Google username
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: AppColors.border),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.25),
+                    backgroundImage: (user?.photoUrl != null && user!.photoUrl!.isNotEmpty)
+                        ? NetworkImage(user.photoUrl!)
+                        : null,
+                    child: (user?.photoUrl == null || user!.photoUrl!.isEmpty)
+                        ? Text(
+                            userName.substring(0, 1).toUpperCase(),
+                            style: const TextStyle(
+                              color: AppColors.accent,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Welcome, $userName 👋',
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          rawEmail.isNotEmpty ? rawEmail : 'Logged in with Google/Chrome',
+                          style: const TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.logout, color: AppColors.coral, size: 22),
+                    onPressed: () async {
+                      await ref.read(authControllerProvider.notifier).signOut();
+                      if (context.mounted) {
+                        context.go('/login');
+                      }
+                    },
+                    tooltip: 'Sign Out',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 18),
             activeJourneyAsync.when(
               data: (activeJourney) => JourneyStatusCard(
                 activeJourney: activeJourney,

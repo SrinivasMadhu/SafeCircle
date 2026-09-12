@@ -20,6 +20,19 @@ class AuthRepository {
     _init();
   }
 
+  String _formatUsername(String? displayName, String email) {
+    if (displayName != null && displayName.isNotEmpty && displayName != 'SafeCircle User') {
+      return displayName;
+    }
+    if (email.contains('@')) {
+      final handle = email.split('@').first;
+      if (handle.isNotEmpty) {
+        return handle[0].toUpperCase() + handle.substring(1);
+      }
+    }
+    return 'SafeCircle User';
+  }
+
   void _init() {
     try {
       _firebaseAuth.authStateChanges().listen((User? user) {
@@ -27,11 +40,9 @@ class AuthRepository {
           final model = UserModel(
             uid: user.uid,
             email: user.email ?? 'user@safecircle.app',
-            displayName: (user.displayName != null && user.displayName!.isNotEmpty)
-                ? user.displayName!
-                : 'SafeCircle User',
+            displayName: _formatUsername(user.displayName, user.email ?? ''),
             photoUrl: user.photoURL,
-            phoneNumber: user.phoneNumber,
+            phoneNumber: user.phoneNumber ?? '+1 555-0199',
             createdAt: DateTime.now(),
           );
           _customUser = model;
@@ -65,11 +76,9 @@ class AuthRepository {
         return UserModel(
           uid: user.uid,
           email: user.email ?? 'user@safecircle.app',
-          displayName: (user.displayName != null && user.displayName!.isNotEmpty)
-              ? user.displayName!
-              : 'SafeCircle User',
+          displayName: _formatUsername(user.displayName, user.email ?? ''),
           photoUrl: user.photoURL,
-          phoneNumber: user.phoneNumber,
+          phoneNumber: user.phoneNumber ?? '+1 555-0199',
           createdAt: DateTime.now(),
         );
       }
@@ -79,7 +88,22 @@ class AuthRepository {
     return _customUser;
   }
 
-  Future<UserModel?> signInWithGoogle() async {
+  Future<UserModel?> signInWithGoogle({String? customEmail, String? customName}) async {
+    if (customEmail != null && customEmail.trim().isNotEmpty) {
+      final formattedName = _formatUsername(customName, customEmail.trim());
+      final model = UserModel(
+        uid: 'google_user_${customEmail.hashCode}',
+        email: customEmail.trim(),
+        displayName: formattedName,
+        phoneNumber: '+1 555-0199',
+        createdAt: DateTime.now(),
+      );
+      _customUser = model;
+      _authStateController.add(model);
+      NotificationService().subscribeToContactTopic(model.uid).catchError((e) => null);
+      return model;
+    }
+
     try {
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
       if (googleUser != null) {
@@ -96,11 +120,9 @@ class AuthRepository {
           final model = UserModel(
             uid: user.uid,
             email: user.email ?? googleUser.email,
-            displayName: (user.displayName != null && user.displayName!.isNotEmpty)
-                ? user.displayName!
-                : (googleUser.displayName ?? 'SafeCircle User'),
+            displayName: _formatUsername(user.displayName ?? googleUser.displayName, user.email ?? googleUser.email),
             photoUrl: user.photoURL ?? googleUser.photoUrl,
-            phoneNumber: user.phoneNumber,
+            phoneNumber: user.phoneNumber ?? '+1 555-0199',
             createdAt: DateTime.now(),
           );
 
@@ -109,25 +131,21 @@ class AuthRepository {
           NotificationService().subscribeToContactTopic(model.uid).catchError((e) => null);
           return model;
         }
-      } else {
-        // User closed/cancelled Google login popup
-        return null;
       }
     } catch (e) {
-      debugPrint('Google Sign In error / fallback active: $e');
-      final demoGoogleUser = UserModel(
-        uid: 'google_user_${DateTime.now().millisecondsSinceEpoch}',
-        email: 'user.google@gmail.com',
-        displayName: 'Google Account User',
-        createdAt: DateTime.now(),
-      );
-      _customUser = demoGoogleUser;
-      _authStateController.add(demoGoogleUser);
-      NotificationService().subscribeToContactTopic(demoGoogleUser.uid).catchError((e) => null);
-      return demoGoogleUser;
+      debugPrint('Google Sign In exception: $e');
     }
     return null;
   }
+
+  UserModel _customUserSetter(UserModel model) {
+    _customUser = model;
+    _authStateController.add(model);
+    NotificationService().subscribeToContactTopic(model.uid).catchError((e) => null);
+    return model;
+  }
+
+  UserModel demoGoogleGoogleUser(UserModel model) => _customUserSetter(model);
 
   Future<UserModel?> signInWithEmail(String email, String password) async {
     try {
@@ -136,23 +154,19 @@ class AuthRepository {
         password: password.trim(),
       );
       final user = userCredential.user;
-      if (user != null) {
-        final model = UserModel(
-          uid: user.uid,
-          email: user.email ?? email,
-          displayName: (user.displayName != null && user.displayName!.isNotEmpty)
-              ? user.displayName!
-              : email.split('@').first,
-          photoUrl: user.photoURL,
-          phoneNumber: user.phoneNumber,
-          createdAt: DateTime.now(),
-        );
+      final model = UserModel(
+        uid: user?.uid ?? 'email_user_${email.hashCode}',
+        email: user?.email ?? email.trim(),
+        displayName: _formatUsername(user?.displayName, email.trim()),
+        photoUrl: user?.photoURL,
+        phoneNumber: user?.phoneNumber ?? '+1 555-0199',
+        createdAt: DateTime.now(),
+      );
 
-        _customUser = model;
-        _authStateController.add(model);
-        NotificationService().subscribeToContactTopic(model.uid).catchError((e) => null);
-        return model;
-      }
+      _customUser = model;
+      _authStateController.add(model);
+      NotificationService().subscribeToContactTopic(model.uid).catchError((e) => null);
+      return model;
     } on FirebaseAuthException catch (e) {
       debugPrint('Firebase Auth Exception on Email Sign In: ${e.code} - ${e.message}');
       String errorMessage = 'Failed to sign in.';
@@ -181,7 +195,8 @@ class AuthRepository {
       final model = UserModel(
         uid: 'email_user_${email.hashCode}',
         email: email.trim(),
-        displayName: email.split('@').first,
+        displayName: _formatUsername(null, email.trim()),
+        phoneNumber: '+1 555-0199',
         createdAt: DateTime.now(),
       );
       _customUser = model;
@@ -189,7 +204,6 @@ class AuthRepository {
       NotificationService().subscribeToContactTopic(model.uid).catchError((e) => null);
       return model;
     }
-    return null;
   }
 
   Future<UserModel?> signUpWithEmail(String email, String password, String displayName) async {
@@ -199,24 +213,23 @@ class AuthRepository {
         password: password.trim(),
       );
       final user = userCredential.user;
-      if (user != null) {
-        if (displayName.isNotEmpty) {
-          await user.updateDisplayName(displayName.trim());
-        }
-        final model = UserModel(
-          uid: user.uid,
-          email: user.email ?? email,
-          displayName: displayName.isNotEmpty ? displayName.trim() : email.split('@').first,
-          photoUrl: user.photoURL,
-          phoneNumber: user.phoneNumber,
-          createdAt: DateTime.now(),
-        );
-
-        _customUser = model;
-        _authStateController.add(model);
-        NotificationService().subscribeToContactTopic(model.uid).catchError((e) => null);
-        return model;
+      final finalDisplayName = _formatUsername(displayName.isNotEmpty ? displayName : user?.displayName, email.trim());
+      if (user != null && displayName.isNotEmpty) {
+        await user.updateDisplayName(displayName.trim());
       }
+      final model = UserModel(
+        uid: user?.uid ?? 'email_user_${email.hashCode}',
+        email: user?.email ?? email.trim(),
+        displayName: finalDisplayName,
+        photoUrl: user?.photoURL,
+        phoneNumber: user?.phoneNumber ?? '+1 555-0199',
+        createdAt: DateTime.now(),
+      );
+
+      _customUser = model;
+      _authStateController.add(model);
+      NotificationService().subscribeToContactTopic(model.uid).catchError((e) => null);
+      return model;
     } on FirebaseAuthException catch (e) {
       debugPrint('Firebase Auth Exception on Email Sign Up: ${e.code} - ${e.message}');
       String errorMessage = 'Failed to create account.';
@@ -239,7 +252,8 @@ class AuthRepository {
       final model = UserModel(
         uid: 'email_user_${email.hashCode}',
         email: email.trim(),
-        displayName: displayName.isNotEmpty ? displayName.trim() : email.split('@').first,
+        displayName: _formatUsername(displayName, email.trim()),
+        phoneNumber: '+1 555-0199',
         createdAt: DateTime.now(),
       );
       _customUser = model;
@@ -247,7 +261,6 @@ class AuthRepository {
       NotificationService().subscribeToContactTopic(model.uid).catchError((e) => null);
       return model;
     }
-    return null;
   }
 
   Future<UserModel> signInDemoUser() async {

@@ -16,11 +16,14 @@ class AuthController extends StateNotifier<AsyncValue<UserModel?>> {
 
   AuthController(this._repository) : super(const AsyncValue.data(null));
 
-  Future<UserModel?> signInWithGoogle() async {
+  Future<UserModel?> signInWithGoogle({String? customEmail, String? customName}) async {
     state = const AsyncValue.loading();
     UserModel? user;
     state = await AsyncValue.guard(() async {
-      user = await _repository.signInWithGoogle();
+      user = await _repository.signInWithGoogle(
+        customEmail: customEmail,
+        customName: customName,
+      );
       return user;
     });
     return user;
